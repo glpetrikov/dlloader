@@ -1,0 +1,16 @@
+[package]
+name = "dlloader"
+version = "0.1.0"
+edition = "2024"
+authors = ["Gleb Petrikov"]
+description = "A cross-platform dynamic library loader"
+readme = "README.md"
+repository = "https://github.com/glpetrikov/dlloader"
+documentation = "https://docs.rs/dlloader"
+keywords = ["dynamic-loading", "dll", "so", "dylib", "loader"]
+categories = ["api-bindings", "development-tools::ffi"]
+
+[dependencies]
+dlopen2 = "0.8.2"
+tempfile = "3.27.0"
+thiserror = "2.0.18"
