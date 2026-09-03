@@ -10,7 +10,7 @@
 //!
 //! #[derive(WrapperApi)]
 //! struct PluginApi {
-//!     add: extern "C" fn(i32, i32) -> i32,
+//!     add: extern "C" fn(a: i32, b: i32) -> i32,
 //! }
 //!
 //! let plugin = Loader::<PluginApi>::load("plugin.dll")?;
@@ -59,6 +59,8 @@ impl<T: WrapperApi> Loader<T> {
     ///
     /// Returns [`LoaderError::LibraryNotFound`] if the path does not exist.
     /// Returns [`LoaderError::OpenLibrary`] if the library could not be opened.
+    /// Returns [`LoaderError::Dlopen`] if the library opened but a declared symbol
+    /// could not be resolved, or another `dlopen2` error occurred.
     pub fn load(path: impl Into<PathBuf>) -> Result<Self, LoaderError> {
         let path = path.into();
 
@@ -75,9 +77,42 @@ impl<T: WrapperApi> Loader<T> {
         })
     }
 
+    /// # Loads a dynamic library from a filesystem path with automatic extension and prefix addition.
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`LoaderError::LibraryNotFound`] if the path does not exist.
+    /// Returns [`LoaderError::OpenLibrary`] if the library could not be opened.
+    /// Returns [`LoaderError::Dlopen`] if the library opened but a declared symbol
+    /// could not be resolved, or another `dlopen2` error occurred.
+    /// Returns [`LoaderError::ExtensionDetected`] if the path already has an extension (like `.dll` or `.so`).
+    /// Returns [`LoaderError::InvalidPath`] if the path is not a valid file path.
+    pub fn load_with_auto_extension(path: impl Into<PathBuf>) -> Result<Self, LoaderError> {
+        let path = path.into();
+
+        if path.extension().is_some() {
+            return Err(LoaderError::ExtensionDetected { path });
+        }
+
+        let stem = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| LoaderError::InvalidPath { path: path.clone() })?;
+        let dir = path.parent().unwrap_or_else(|| std::path::Path::new(""));
+
+        #[cfg(target_os = "windows")]
+        let file_name = format!("{stem}.dll");
+        #[cfg(target_os = "macos")]
+        let file_name = format!("lib{stem}.dylib");
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let file_name = format!("lib{stem}.so");
+
+        Self::load(dir.join(file_name))
+    }
+
     /// # Loads a dynamic library from bytes.
     ///
-    /// WARNING! THIS FUNCTION CREATES A TEMP FILE!!
+    /// Note: this writes the bytes to a temporary file on disk before loading (see [tempfile])
     ///
     /// The bytes are written to a temporary file first, because native dynamic
     /// library loaders usually require a filesystem path.
@@ -86,12 +121,12 @@ impl<T: WrapperApi> Loader<T> {
     ///
     /// Returns [`LoaderError::CreateTempDir`] if a temporary directory could not
     /// be created.
-    ///
     /// Returns [`LoaderError::WriteTempLibrary`] if the temporary library file
     /// could not be written.
-    ///
     /// Returns [`LoaderError::OpenLibrary`] if the written library could not be
     /// loaded by the operating system.
+    /// Returns [`LoaderError::Dlopen`] if the library opened but a declared symbol
+    /// could not be resolved, or another `dlopen2` error occurred.
     pub fn load_from_bytes(bytes: &[u8], temp_file_name: &str) -> Result<Self, LoaderError> {
         let temp_dir =
             tempfile::tempdir().map_err(|source| LoaderError::CreateTempDir { source })?;
@@ -112,7 +147,9 @@ impl<T: WrapperApi> Loader<T> {
         })
     }
 
-    /// # Returns a reference to the loaded API.
+    /// Returns a reference to the loaded API.
+    ///
+    /// The API can also be accessed directly through the loader via `Deref`.
     pub fn api(&self) -> &T {
         &self.container
     }

@@ -7,7 +7,7 @@ struct PluginApi {
     greet: extern "C" fn() -> *const std::ffi::c_char,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     let lib_bytes = include_bytes!("../target/debug/dlloader_fixture.dll");
     #[cfg(target_os = "linux")]
@@ -15,15 +15,14 @@ fn main() {
     #[cfg(target_os = "macos")]
     let lib_bytes = include_bytes!("../target/debug/libdlloader_fixture.dylib");
 
-    let lib = Loader::<PluginApi>::load_from_bytes(lib_bytes, "Library")
-        .expect("failed to load from bytes libdlloader_fixture");
+    let lib = Loader::<PluginApi>::load_from_bytes(lib_bytes, "Library")?;
 
     println!("add(2, 3) = {}", lib.add(2, 3));
-
     unsafe {
         let msg = std::ffi::CStr::from_ptr(lib.greet()).to_string_lossy();
         println!("greet() = {msg}");
     }
-
     println!("add_float(100.3, 10.5) = {}", lib.add_float(100.3, 10.5));
+
+    Ok(())
 }

@@ -1,4 +1,3 @@
-use std::ffi::NulError;
 use std::{io, path::PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +18,9 @@ pub enum LoaderError {
         source: io::Error,
     },
 
+    #[error("invalid path: {path}")]
+    InvalidPath { path: PathBuf },
+
     #[error("failed to write temporary library file `{path}`: {source}")]
     WriteTempLibrary {
         path: PathBuf,
@@ -26,58 +28,32 @@ pub enum LoaderError {
         source: io::Error,
     },
 
-    #[error("failed to load symbol: {source}")]
-    SymbolGetting {
-        #[source]
-        source: io::Error,
-    },
+    #[error(
+        "an extension was detected in the path when it should have been detected automatically: {path}"
+    )]
+    ExtensionDetected { path: PathBuf },
 
-    #[error("symbol name contains a null byte")]
-    NullCharacter {
-        #[from]
-        source: NulError,
-    },
-
-    #[error("symbol pointer was null")]
-    NullSymbol,
-
-    #[error("address could not be matched to a dynamic library: {source}")]
-    AddrNotMatchingDll {
-        #[source]
-        source: io::Error,
-    },
-
+    // catch-all for dlopen2 errors with no extra context to add beyond what
+    // dlopen2::Error's own Display already provides (symbol lookup, null
+    // symbol, addr-to-library lookup — none of these had a path or other
+    // detail attached even in the old per-variant versions)
     #[error("dynamic library error: {source}")]
     Dlopen {
         #[source]
+        #[from]
         source: dlopen2::Error,
     },
 }
 
 impl LoaderError {
+    /// Attaches the path being opened to a dlopen2 error — used by
+    /// `load`/`load_from_bytes`, which know the path but `dlopen2::Error`
+    /// itself doesn't carry it. Every other dlopen2::Error kind falls back
+    /// to the generic `Dlopen` variant, where there's no path to attach.
     pub fn from_open_error(path: PathBuf, error: dlopen2::Error) -> Self {
         match error {
             dlopen2::Error::OpeningLibraryError(source) => Self::OpenLibrary { path, source },
             source => Self::Dlopen { source },
-        }
-    }
-}
-
-impl From<dlopen2::Error> for LoaderError {
-    fn from(error: dlopen2::Error) -> Self {
-        match error {
-            dlopen2::Error::NullCharacter(source) => Self::NullCharacter { source },
-
-            dlopen2::Error::OpeningLibraryError(source) => Self::OpenLibrary {
-                path: PathBuf::new(),
-                source,
-            },
-
-            dlopen2::Error::SymbolGettingError(source) => Self::SymbolGetting { source },
-
-            dlopen2::Error::NullSymbol => Self::NullSymbol,
-
-            dlopen2::Error::AddrNotMatchingDll(source) => Self::AddrNotMatchingDll { source },
         }
     }
 }

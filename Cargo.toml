@@ -1,6 +1,6 @@
 [package]
 name = "dlloader"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 authors = ["Gleb Petrikov"]
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,11 @@ categories = ["api-bindings", "development-tools::ffi"]
 dlopen2 = "0.8.2"
 tempfile = "3.27.0"
 thiserror = "2.0.18"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
 
 [workspace]
 members = ["dlloader-fixture"]
